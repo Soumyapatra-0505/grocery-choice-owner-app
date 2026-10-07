@@ -3,7 +3,7 @@
  * Maps precisely to Spring Boot backend DTOs and database models.
  */
 
-export type Role = 'OWNER' | 'ADMIN' | 'STAFF' | 'CUSTOMER';
+export type Role = 'OWNER' | 'ADMIN' | 'STAFF' | 'CUSTOMER' | 'DELIVERY';
 export type UserStatus = 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
 
 export type ProductUnit =

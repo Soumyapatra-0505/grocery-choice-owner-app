@@ -735,6 +735,23 @@ export default function StaffManagementScreen() {
                     </Text>
                   </TouchableOpacity>
 
+                  <TouchableOpacity
+                    style={[
+                      styles.selectorPill,
+                      addRole === 'DELIVERY' && styles.selectorPillActive
+                    ]}
+                    onPress={() => setAddRole('DELIVERY')}
+                  >
+                    <Text
+                      style={[
+                        styles.selectorPillText,
+                        addRole === 'DELIVERY' && styles.selectorPillTextActive
+                      ]}
+                    >
+                      DELIVERY / Delivery Partner
+                    </Text>
+                  </TouchableOpacity>
+
                   {isPrimaryOwner && (
                     <TouchableOpacity
                       style={[
@@ -756,32 +773,47 @@ export default function StaffManagementScreen() {
                 </View>
 
                 {/* Designation Picker from backend catalog */}
-                {designations.length > 0 && (
-                  <>
-                    <Text style={styles.inputGroupLabel}>Designation</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizScroll}>
-                      {designations.map((d) => (
-                        <TouchableOpacity
-                          key={d.id}
-                          style={[
-                            styles.designationPill,
-                            addDesignation === d.title && styles.designationPillActive
-                          ]}
-                          onPress={() => setAddDesignation(d.title)}
-                        >
-                          <Text
-                            style={[
-                              styles.designationPillText,
-                              addDesignation === d.title && styles.designationPillTextActive
-                            ]}
-                          >
-                            {d.title}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </>
-                )}
+                <Text style={styles.inputGroupLabel}>Designation</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizScroll}>
+                  {designations.map((d) => (
+                    <TouchableOpacity
+                      key={d.id}
+                      style={[
+                        styles.designationPill,
+                        addDesignation === d.title && styles.designationPillActive
+                      ]}
+                      onPress={() => setAddDesignation(d.title)}
+                    >
+                      <Text
+                        style={[
+                          styles.designationPillText,
+                          addDesignation === d.title && styles.designationPillTextActive
+                        ]}
+                      >
+                        {d.title}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                  {!designations.some((d) => d.title === 'Delivery Partner') && (
+                    <TouchableOpacity
+                      key="delivery-partner"
+                      style={[
+                        styles.designationPill,
+                        addDesignation === 'Delivery Partner' && styles.designationPillActive
+                      ]}
+                      onPress={() => setAddDesignation('Delivery Partner')}
+                    >
+                      <Text
+                        style={[
+                          styles.designationPillText,
+                          addDesignation === 'Delivery Partner' && styles.designationPillTextActive
+                        ]}
+                      >
+                        Delivery Partner
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </ScrollView>
 
                 <Input
                   label="Store Hub / Location"
@@ -1300,26 +1332,31 @@ const styles = StyleSheet.create({
   },
   selectorRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.sm,
     marginBottom: spacing.md
   },
   selectorPill: {
     flex: 1,
+    minWidth: 100,
     paddingVertical: 10,
+    paddingHorizontal: 6,
     borderRadius: 8,
     backgroundColor: colors.surfaceSecondary,
     borderWidth: 1,
     borderColor: colors.border,
-    alignItems: 'center'
+    alignItems: 'center',
+    justifyContent: 'center'
   },
   selectorPillActive: {
     backgroundColor: colors.primaryLight,
     borderColor: colors.primary
   },
   selectorPillText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
-    color: colors.textSecondary
+    color: colors.textSecondary,
+    textAlign: 'center'
   },
   selectorPillTextActive: {
     color: colors.primaryDark,
