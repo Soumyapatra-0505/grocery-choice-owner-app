@@ -1,7 +1,7 @@
 /**
  * Grocery Choice Owner App - Order Details Screen
  * Complete implementation: Customer Details, Ordered Items list,
- * Payment Mode & Status, Financial Summary, and robust Back navigation.
+ * Payment Mode & Status, Financial Summary, and interactive Order Status Dropdown/Picker.
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -11,7 +11,9 @@ import {
   StyleSheet,
   ScrollView,
   BackHandler,
-  TouchableOpacity
+  TouchableOpacity,
+  ActivityIndicator,
+  Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -20,9 +22,10 @@ import { Header } from '@/components/common/Header';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/common/Badge';
 import { LoadingIndicator } from '@/components/common/LoadingIndicator';
+import { OrderStatusPickerModal, isTerminalOrderStatus } from '@/components/common/OrderStatusPickerModal';
 import { colors, spacing } from '@/theme';
 import { ordersApi } from '@/api/ordersApi';
-import { Order, OrderItem } from '@/types';
+import { Order, OrderItem, OrderStatus } from '@/types';
 import {
   formatCurrency,
   formatDateTime,
@@ -55,6 +58,11 @@ export default function OrderDetailsScreen() {
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Status picker state
+  const [pickerVisible, setPickerVisible] = useState(false);
+  const [updating, setUpdating] = useState(false);
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
   // Robust back navigation to Orders list
   const handleBack = useCallback(() => {
     if (router.canGoBack()) {
@@ -82,10 +90,77 @@ export default function OrderDetailsScreen() {
       .finally(() => setLoading(false));
   }, [id]);
 
+  // Auto-dismiss feedback banner
+  useEffect(() => {
+    if (feedback) {
+      const t = setTimeout(() => setFeedback(null), 3500);
+      return () => clearTimeout(t);
+    }
+  }, [feedback]);
+
   const totalUnits = useMemo(() => {
     if (!order?.items || !Array.isArray(order.items)) return 0;
     return order.items.reduce((sum, item) => sum + (item.quantity || 1), 0);
   }, [order?.items]);
+
+  const isTerminal = isTerminalOrderStatus(order?.status);
+
+  const handleOpenPicker = () => {
+    if (updating || !order) return;
+    if (isTerminal) {
+      Alert.alert(
+        'Order Status Locked',
+        `This order is already marked as ${formatStatusLabel(order.status)}. Delivered and Cancelled orders cannot be modified.`
+      );
+      return;
+    }
+    setPickerVisible(true);
+  };
+
+  const handleSelectStatus = async (newStatus: OrderStatus) => {
+    if (!order || updating) return;
+
+    if (order.status === newStatus) {
+      setPickerVisible(false);
+      return;
+    }
+
+    if (isTerminalOrderStatus(order.status)) {
+      setPickerVisible(false);
+      Alert.alert(
+        'Order Status Locked',
+        'Delivered and Cancelled orders are in terminal states and cannot be modified.'
+      );
+      return;
+    }
+
+    setPickerVisible(false);
+    setUpdating(true);
+    setFeedback(null);
+
+    try {
+      const updated = await ordersApi.updateStatus(order.id, newStatus);
+      setOrder((prev) =>
+        prev
+          ? { ...prev, ...(updated || {}), status: updated?.status || newStatus }
+          : prev
+      );
+      setFeedback({
+        type: 'success',
+        message: `Order #${order.orderNumber || order.id} status updated to ${formatStatusLabel(newStatus)}!`
+      });
+    } catch (err: any) {
+      console.error('Failed to update order status:', err);
+      const errMsg = err?.data?.message || err?.message || 'Failed to update order status.';
+      setFeedback({
+        type: 'error',
+        message: errMsg
+      });
+      Alert.alert('Status Update Failed', errMsg);
+    } finally {
+      setUpdating(false);
+    }
+  };
 
   if (loading) {
     return <LoadingIndicator fullscreen message="Loading order details..." />;
@@ -102,17 +177,99 @@ export default function OrderDetailsScreen() {
         }}
         rightAction={
           order?.status ? (
-            <Badge
-              label={formatStatusLabel(order.status)}
-              variant={getStatusVariant(order.status)}
-            />
+            <TouchableOpacity
+              activeOpacity={isTerminal ? 1 : 0.7}
+              disabled={updating}
+              onPress={handleOpenPicker}
+              style={[
+                styles.headerStatusBtn,
+                isTerminal && styles.headerStatusBtnLocked
+              ]}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              {updating ? (
+                <View style={styles.headerUpdatingRow}>
+                  <ActivityIndicator size="small" color={colors.primary} />
+                </View>
+              ) : (
+                <View style={styles.headerBadgeRow}>
+                  <Badge
+                    label={formatStatusLabel(order.status)}
+                    variant={getStatusVariant(order.status)}
+                  />
+                  {!isTerminal && (
+                    <Text style={styles.headerStatusChevron}>▾</Text>
+                  )}
+                </View>
+              )}
+            </TouchableOpacity>
           ) : undefined
         }
       />
 
+      {/* Feedback Banner */}
+      {feedback && (
+        <View
+          style={[
+            styles.feedbackBanner,
+            feedback.type === 'success' ? styles.feedbackSuccess : styles.feedbackError
+          ]}
+        >
+          <Text
+            style={[
+              styles.feedbackText,
+              feedback.type === 'success' ? styles.feedbackTextSuccess : styles.feedbackTextError
+            ]}
+          >
+            {feedback.message}
+          </Text>
+        </View>
+      )}
+
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {order ? (
           <>
+            {/* Fulfillment Status Card */}
+            <Card style={styles.card}>
+              <View style={styles.cardHeaderRow}>
+                <View>
+                  <Text style={styles.cardTitle}>Fulfillment Status</Text>
+                  <Text style={styles.statusHelperText}>
+                    {isTerminal
+                      ? 'Status locked (terminal state)'
+                      : 'Tap button to transition order lifecycle'}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  activeOpacity={isTerminal ? 1 : 0.7}
+                  disabled={updating}
+                  onPress={handleOpenPicker}
+                  style={[
+                    styles.statusControlBtn,
+                    isTerminal && styles.statusControlBtnLocked,
+                    updating && styles.statusControlBtnUpdating
+                  ]}
+                >
+                  {updating ? (
+                    <View style={styles.updatingRow}>
+                      <ActivityIndicator size="small" color={colors.primary} />
+                      <Text style={styles.updatingText}>Saving...</Text>
+                    </View>
+                  ) : (
+                    <View style={styles.statusBadgeRow}>
+                      <Badge
+                        label={formatStatusLabel(order.status)}
+                        variant={getStatusVariant(order.status)}
+                      />
+                      {!isTerminal && (
+                        <Text style={styles.statusChevron}>▾</Text>
+                      )}
+                    </View>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </Card>
+
             {/* 1. Customer Details Card */}
             <Card style={styles.card}>
               <Text style={styles.cardTitle}>Customer Details</Text>
@@ -266,6 +423,18 @@ export default function OrderDetailsScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* Reusable Status Picker Modal */}
+      {order && (
+        <OrderStatusPickerModal
+          visible={pickerVisible}
+          currentStatus={order.status}
+          orderNumber={order.orderNumber || String(order.id)}
+          onSelectStatus={handleSelectStatus}
+          onClose={() => setPickerVisible(false)}
+          loading={updating}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -274,6 +443,53 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: colors.background
+  },
+  headerStatusBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 2,
+    paddingHorizontal: 4
+  },
+  headerStatusBtnLocked: {
+    opacity: 0.95
+  },
+  headerBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3
+  },
+  headerStatusChevron: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.textSecondary,
+    marginLeft: 2
+  },
+  headerUpdatingRow: {
+    paddingHorizontal: 6
+  },
+  feedbackBanner: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1
+  },
+  feedbackSuccess: {
+    backgroundColor: '#ecfdf5',
+    borderBottomColor: '#a7f3d0'
+  },
+  feedbackError: {
+    backgroundColor: '#fef2f2',
+    borderBottomColor: '#fecaca'
+  },
+  feedbackText: {
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center'
+  },
+  feedbackTextSuccess: {
+    color: '#065f46'
+  },
+  feedbackTextError: {
+    color: '#b91c1c'
   },
   scrollContent: {
     padding: spacing.md,
@@ -294,6 +510,47 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: colors.textPrimary,
     marginBottom: spacing.xs
+  },
+  statusHelperText: {
+    fontSize: 12,
+    color: colors.textMuted
+  },
+  statusControlBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    backgroundColor: colors.surfaceSecondary,
+    borderWidth: 1,
+    borderColor: colors.border
+  },
+  statusControlBtnLocked: {
+    opacity: 0.95
+  },
+  statusControlBtnUpdating: {
+    opacity: 0.8
+  },
+  statusBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4
+  },
+  statusChevron: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.textSecondary,
+    marginLeft: 2
+  },
+  updatingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6
+  },
+  updatingText: {
+    fontSize: 11,
+    color: colors.primary,
+    fontWeight: '700'
   },
   detailRow: {
     flexDirection: 'row',
